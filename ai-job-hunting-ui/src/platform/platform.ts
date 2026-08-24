@@ -16,6 +16,8 @@ import {LogRecorder} from "../logging/record";
 import {pushResultCount, UserStore} from "../stores";
 import {userRemoteLoad} from "../stores/remote";
 import {AiPower} from "./aiPower";
+import BossMessage from "../components/ui/BossMessage.vue";
+import BossJobList from "../components/ui/BossJobList.vue";
 
 let pushResultCounter: any;
 let userStore: any;
@@ -269,10 +271,13 @@ class BossPlatform extends AbsPlatform {
                         p: p
                     })
                 }
-                if (count >= 3) {
+                if (count >= 200) {
                     clearInterval(interval);
-                    logger.error(PlatformTypeEnum.Boss, "获取平台挂载元素失败")
-                    return document.createElement("div")
+                    logger.error(PlatformTypeEnum.Boss, "获取平台挂载元素失败，回退到 body")
+                    return resolve({
+                        el: document.body as Element,
+                        p: "end"
+                    })
                 }
                 count++;
             }, 300);
@@ -282,14 +287,11 @@ class BossPlatform extends AbsPlatform {
 
     async getRenderComponent(): Promise<any> {
         if (this.curUrl.includes("www.zhipin.com/web/geek/chat")) {
-            let promise = import('../components/ui/BossMessage.vue');
-            return promise.then(item => item.default)
+            return BossMessage;
         }
         if (this.curUrl.includes("www.zhipin.com/web/geek/job") || this.curUrl.includes("overseas")) {
-            let promise = import('../components/ui/BossJobList.vue');
-            return promise.then(item => item.default)
+            return BossJobList;
         }
-
     }
 
     startPreHandler(): void {

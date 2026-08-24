@@ -1,7 +1,7 @@
 import {defineConfig} from 'vite';
 import vue from '@vitejs/plugin-vue';
 import Markdown from 'vite-plugin-md';
-import monkey, {cdn, util} from "vite-plugin-monkey";
+import monkey from "vite-plugin-monkey";
 import AutoImport from 'unplugin-auto-import/vite';
 import Components from 'unplugin-vue-components/vite';
 import {ElementPlusResolver} from 'unplugin-vue-components/resolvers';
@@ -43,19 +43,8 @@ export default defineConfig(({mode}) => {
                 match: matchUrlList,
             },
             build: {
-                externalGlobals: {
-                    vue: cdn.jsdelivr('Vue', 'dist/vue.global.prod.js')
-                        .concat('https://unpkg.com/vue-demi@latest/lib/index.iife.js')
-                        .concat(util.dataUrl(";window.Vue=Vue;")),
-                    "element-plus": cdn.jsdelivr("ElementPlus", "dist/index.full.min.js"),
-                    protobufjs: cdn.jsdelivr("protobuf", "dist/protobuf.min.js"),
-                    pinia: cdn.jsdelivr("Pinia", "dist/pinia.iife.prod.js"),
-                    "event-source-polyfill": cdn.jsdelivr("EventSourcePolyfill", "src/eventsource.min.js"),
-                },
-                externalResource: {
-                    "element-plus/dist/index.css": cdn.jsdelivr(),
-                    "element-plus/theme-chalk/dark/css-vars.css": cdn.jsdelivr(),
-                },
+                // 内联 systemjs，避免运行时从 jsdelivr CDN 拉取（国内常被墙导致面板不渲染）
+                systemjs: 'inline',
             },
         })
     ];

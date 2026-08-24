@@ -39,23 +39,20 @@ const rootApp = document.createElement('div');
 rootApp.id = "ai-job"
 rootApp.classList.add('page-job-content');
 
-window.onload = () => {
-    app.mount(
-        (() => {
-            platform.getMountEle().then(elP => {
-                let containerEle = elP.el
-                let p = elP.p
-                if (p === "end") {
-                    containerEle.appendChild(rootApp)
-                } else {
-                    containerEle.insertBefore(
-                        rootApp,
-                        containerEle.firstElementChild
-                    );
-                }
-            })
-            return rootApp;
-        })(),
-    );
-}
+// 先挂载到离屏容器，再等平台挂载元素出现后移入 DOM。
+// 不依赖 window.onload：Tampermonkey 默认 document-idle 运行，
+// 若页面 load 事件已先触发，window.onload 回调永远不会执行，导致面板偶发不渲染。
+app.mount(rootApp);
+platform.getMountEle().then(elP => {
+    let containerEle = elP.el
+    let p = elP.p
+    if (p === "end") {
+        containerEle.appendChild(rootApp)
+    } else {
+        containerEle.insertBefore(
+            rootApp,
+            containerEle.firstElementChild
+        );
+    }
+})
 
