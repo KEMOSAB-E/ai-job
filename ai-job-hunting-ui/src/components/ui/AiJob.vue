@@ -40,6 +40,10 @@
             pushResultCounter.failCount
         }}&nbsp;&nbsp;&nbsp;
     </el-text>
+    <el-text size="large" class="mx-1" type="info"> 今日投递：{{ dailyCount }}<template v-if="dailyTarget > 0"> / 目标 {{ dailyTarget }}</template>&nbsp;&nbsp;&nbsp;
+    </el-text>
+    <el-text size="large" class="mx-1" :type="autoPushEnabled ? 'success' : 'info'"> 自动投递：{{ autoPushEnabled ? '开' : '关' }}&nbsp;&nbsp;&nbsp;
+    </el-text>
     <el-text size="large" class="mx-1"> 单次投递限制数量：</el-text>
     <el-input-number v-model="selfDefPushCountLimit" :min="-1" :max="100"
                      @change="selfDefPushCountLimitChange"/>
@@ -230,10 +234,11 @@
 <script setup lang="ts">
 import axiosOriginal, {AxiosInstance} from "axios";
 import {CircleCloseFilled, PriceTag, Promotion, Service, Shop, Upload, Wallet, Collection, RefreshRight} from '../icons';
-import {h, inject, ref, Ref, onMounted, onUnmounted} from "vue";
+import {h, inject, ref, Ref, onMounted, onUnmounted, computed} from "vue";
 import {PushStatus} from "../../enums";
 import {AbsPlatform} from "../../platform/platform";
-import {Tools} from "../../platform/utils";
+import {AutoPushScheduler} from "../../platform/autoPush";
+import {TampermonkeyApi, Tools} from "../../platform/utils";
 import {ElMessage, fetchWithGM_request, isProdEnv, loginInterceptor, silentlyLogin} from "../../utils/tools";
 import logger from '../../logging'
 import {SSEClient} from "../../utils/sse";
@@ -341,6 +346,19 @@ let loginStore = LoginStore();
 let pushResultCounter = pushResultCount();
 
 const userStore = UserStore();
+
+// 每日投递状态展示
+const dailyCount = ref<number>(0)
+const dailyTarget = ref<number>(0)
+const autoPushEnabled = computed(() => userStore.user.preference?.autoPushE === true)
+
+const refreshDailyStatus = () => {
+    const today = Tools.getCurDay()
+    const date = TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_DATE, "")
+    dailyCount.value = date === today ? TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_COUNT, 0) : 0
+    const targetDate = TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_TARGET_DATE, "")
+    dailyTarget.value = targetDate === today ? TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_TARGET, 0) : 0
+}
 // --------------------------------------------------函数定义-------------------------------------------------------------
 
 // 获取最新的投递记录
@@ -517,13 +535,16 @@ const selfDefPushCountLimitChange = (val: number) => {
 // 非生产环境支持mock投递
 const mockPush = ref<boolean>(false)
 
-const startPush = () => {
-
+/**
+ * 执行一批投递：设置单次上限并启动投递引擎，结束后复位界面状态
+ */
+const runPushBatch = async (batchLimit: number): Promise<void> => {
     if (!loginInterceptor()) {
         return;
     }
 
     platform.pushMock = mockPush.value
+    platform.selfDefPushCountLimit = batchLimit
 
     pushStatus.value = PushStatus.PUSHING
     pushBtnType.value = 'warning'
@@ -532,22 +553,24 @@ const startPush = () => {
     // 开始更新投递记录
     startRecordsUpdate();
 
-    let pushResultPromise = platform.startPush();
+    try {
+        await platform.startPush();
+    } finally {
+        pushStatus.value = PushStatus.PAUSE;
+        pushBtnType.value = 'primary'
+        pushBtnText.value = '开始投递'
+        // 停止更新投递记录
+        stopRecordsUpdate();
+    }
+}
 
-    //   投递结果处理
-    pushResultPromise.then(() => {
+const startPush = () => {
+    runPushBatch(selfDefPushCountLimit.value).then(() => {
         ElMessage({
             message: "批量投递完成",
             type: 'success',
             duration: 3000
         })
-        setTimeout(() => {
-            pushStatus.value = PushStatus.PAUSE;
-            pushBtnType.value = 'primary'
-            pushBtnText.value = '开始投递'
-            // 停止更新投递记录
-            stopRecordsUpdate();
-        }, 200)
     })
 }
 const pausePush = () => {
@@ -714,8 +737,26 @@ if (!loginStore.login && !loginStore.loginFailStatus) {
     })
 }
 
+// 自动定时投递调度器
+let autoPushScheduler: AutoPushScheduler | null = null;
+let dailyStatusTimer: number | null = null;
+
+onMounted(() => {
+    autoPushScheduler = new AutoPushScheduler(
+        (gap) => runPushBatch(gap),
+        () => pushStatus.value === PushStatus.PUSHING
+    );
+    autoPushScheduler.start();
+    refreshDailyStatus();
+    dailyStatusTimer = window.setInterval(refreshDailyStatus, 30000);
+});
+
 // 组件卸载时清理定时器
 onUnmounted(() => {
+    autoPushScheduler?.stop();
+    if (dailyStatusTimer !== null) {
+        window.clearInterval(dailyStatusTimer);
+    }
     stopRecordsUpdate();
 });
 

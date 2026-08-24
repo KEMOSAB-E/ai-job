@@ -244,6 +244,18 @@
                 <p class="time-interval">秒</p>
             </div>
 
+            <div style="display: flex;margin-bottom: 10px;">
+                <el-checkbox v-model="userStore.user.preference.autoPushE" label="" size="large">自动定时投递
+                </el-checkbox>
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <p class="time-interval">每日投递上限</p>
+                <el-input-number v-model="userStore.user.preference.dailyPushLimit" :min="1" :max="200"
+                                 size="small"></el-input-number>
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <el-checkbox v-model="userStore.user.preference.relaxFilterE" label="" size="large">岗位池枯竭自动放宽筛选
+                </el-checkbox>
+            </div>
+
             <el-text class="mx-1 top-title" type="warning">交互设置</el-text>
 
             <el-form-item label="预测问题" prop="jobContentExclude" style="margin-top: 10px;">
@@ -571,6 +583,18 @@ const preferenceDefaultValueHandler = () => {
     // ai坐席延迟回复
     if (!userStore.user.preference.dr) {
         userStore.user.preference.dr = 0;
+    }
+    // 自动定时投递开关：默认关闭
+    if (!userStore.user.preference.autoPushE) {
+        userStore.user.preference.autoPushE = false;
+    }
+    // 每日投递上限：默认 80
+    if (!userStore.user.preference.dailyPushLimit) {
+        userStore.user.preference.dailyPushLimit = 80;
+    }
+    // 岗位池枯竭自动放宽筛选：默认关闭
+    if (!userStore.user.preference.relaxFilterE) {
+        userStore.user.preference.relaxFilterE = false;
     }
 }
 

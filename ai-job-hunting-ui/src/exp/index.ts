@@ -51,6 +51,15 @@ export class PushReqException extends PushException {
 
 }
 
+/**
+ * 登录会话失效异常
+ */
+export class SessionInvalidException extends PushException {
+    constructor(message: string = '登录已失效') {
+        super(message);
+    }
+}
+
 
 export class FetchJobBossFailExp extends PushException {
     jobTitle: string;

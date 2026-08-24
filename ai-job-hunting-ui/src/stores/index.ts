@@ -3,7 +3,7 @@ import {defineStore} from 'pinia'
 import {PreferenceConfig, User} from "./types";
 import logger from "../logging";
 import platform, {PlatformTypeEnum} from "../platform/platform";
-import {TampermonkeyApi} from "../platform/utils";
+import {TampermonkeyApi, Tools} from "../platform/utils";
 
 export const pushResultCount = defineStore('pushResultCount', () => {
     const notMatchCount = ref(0)
@@ -19,6 +19,14 @@ export const pushResultCount = defineStore('pushResultCount', () => {
         successCount.value++
         onceSuccessCount.value++
         TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_SUCCESS_COUNT, successCount.value)
+        // 每日投递计数：跨天自动清零
+        const today = Tools.getCurDay()
+        if (TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_DATE, "") !== today) {
+            TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_DAILY_DATE, today)
+            TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_DAILY_COUNT, 0)
+        }
+        const daily = TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_COUNT, 0)
+        TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_DAILY_COUNT, daily + 1)
     }
 
     function failIncr() {

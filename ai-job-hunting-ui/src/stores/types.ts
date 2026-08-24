@@ -165,6 +165,18 @@ export type PreferenceConfig = {
      * 翻页间隔时间（秒）
      */
     npi: number,
+    /**
+     * 每日投递上限（自动投递开启时，每天在其附近随机取当日目标值）
+     */
+    dailyPushLimit: number,
+    /**
+     * 自动定时投递开关
+     */
+    autoPushE: boolean,
+    /**
+     * 岗位池枯竭自动放宽筛选开关
+     */
+    relaxFilterE: boolean,
 }
 
 /**

@@ -4,7 +4,8 @@ import {
     PlatformError,
     PublishLimitExp,
     PublishStopExp,
-    PushReqException
+    PushReqException,
+    SessionInvalidException
 } from "../exp";
 import {scrollElementToBottom, simulateScrollToEnd, TampermonkeyApi, Tools} from "./utils";
 import logger, {LogLevel} from '../logging'
@@ -119,6 +120,10 @@ export abstract class AbsPlatform implements Platform {
                         // 投递停止；手动停止.结束链路
                         case error instanceof PublishStopExp:
                             this.logRecorder.info("手动暂停投递 " + error.message)
+                            return;
+                        // 登录失效；结束链路
+                        case error instanceof SessionInvalidException:
+                            this.logRecorder.error("登录失效，停止投递，请重新登录BOSS直聘")
                             return;
                         // 投递限制；平台限制.结束链路
                         case error instanceof PublishLimitExp:
@@ -522,10 +527,21 @@ class BossPlatform extends AbsPlatform {
             await Tools.sleep(userStore.user.preference.pi * 1000)
             pushResp = await axiosOriginal.post(publishUrl, null, {headers: {"Zp_token": Tools.getCookieValue("bst")}});
         } catch (error: any) {
+            // 登录失效：不再重试，直接终止链路
+            if (this.isSessionInvalidError(error)) {
+                this.handleSessionInvalid()
+                throw new SessionInvalidException();
+            }
             // 重试投递
             logger.debug(`工作【${jobTitle}】投递失败; 正在等待重试; 原因：${error.message}`)
             await Tools.sleep(800);
             return await this.doPush(jobDetail, error.message, retries - 1);
+        }
+
+        // 登录失效（接口返回未登录）
+        if (this.isSessionInvalidResp(pushResp)) {
+            this.handleSessionInvalid()
+            throw new SessionInvalidException();
         }
 
         if (pushResp.data.code === PushResultStatus.FAIL && pushResp.data?.zpData?.bizData?.chatRemindDialog?.content) {
@@ -546,6 +562,37 @@ class BossPlatform extends AbsPlatform {
         // 避免频繁
         await Tools.sleep(800);
         return pushResp.data;
+    }
+
+    private isSessionInvalidError(error: any): boolean {
+        const status = error?.response?.status;
+        if (status === 401 || status === 403) {
+            return true;
+        }
+        // 请求被重定向到登录页
+        const respUrl = error?.response?.config?.url || error?.request?.responseURL || "";
+        return typeof respUrl === "string" && respUrl.includes("login");
+    }
+
+    private isSessionInvalidResp(resp: any): boolean {
+        const data = resp?.data;
+        if (!data) {
+            return false;
+        }
+        const msg = String(data?.message || data?.msg || "");
+        if (/登录|未登录|请先登录|token|身份|失效|过期|login/i.test(msg)) {
+            return true;
+        }
+        return !!(data?.zpData?.loginUrl || data?.zpData?.needLogin);
+    }
+
+    private handleSessionInvalid() {
+        const already = TampermonkeyApi.GmGetValue(TampermonkeyApi.SESSION_INVALID, false);
+        TampermonkeyApi.GmSetValue(TampermonkeyApi.SESSION_INVALID, true);
+        if (!already) {
+            this.logRecorder.error("登录已失效，请重新登录BOSS直聘");
+            TampermonkeyApi.GmNotification("登录已失效，请重新登录BOSS直聘后再投递");
+        }
     }
 
     private bossDataCache: Map<string, any> = new Map();
@@ -599,6 +646,8 @@ class BossPlatform extends AbsPlatform {
         const jobTitle = this.getJobKey(jobDetail)
 
         if (pushResult.message === 'Success' && pushResult.code === 0) {
+            // 投递成功说明会话有效，清除失效标志
+            TampermonkeyApi.GmSetValue(TampermonkeyApi.SESSION_INVALID, false)
             pushResultCounter.successIncr()
             this.logRecorder.info(`工作【${jobTitle}】 投递成功`)
 
@@ -619,6 +668,8 @@ class BossPlatform extends AbsPlatform {
         }
 
         if (pushResult.message.includes("今日沟通人数已达上限")) {
+            // 标记平台当日投递限制，调度器据此停止补投
+            TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_LIMIT, true)
             throw new PublishLimitExp(pushResult.message)
         }
         throw new PushReqException(jobTitle, pushResult.message)

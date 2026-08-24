@@ -130,6 +130,18 @@ export class TampermonkeyApi {
     static PUSH_LIMIT = "push_limit" + Tools.getCurDay();
     // 投递锁是否被占用，可重入；value表示当前正在投递的job
     static PUSH_LOCK = "push_lock";
+    // 每日投递计数对应日期（换日清零）
+    static PUSH_DAILY_DATE = "pushDailyDate";
+    // 每日投递成功计数
+    static PUSH_DAILY_COUNT = "pushDailyCount";
+    // 今日投递目标（每天随机取一个）
+    static PUSH_DAILY_TARGET = "pushDailyTarget";
+    // 今日投递目标对应日期
+    static PUSH_DAILY_TARGET_DATE = "pushDailyTargetDate";
+    // 今日缺口是否已上报
+    static PUSH_DAILY_GAP_REPORTED = "pushDailyGapReported";
+    // 登录会话是否已失效
+    static SESSION_INVALID = "sessionInvalid";
 
     // 公司名包含输入框lab
     static cnInKey = "companyNameInclude"
