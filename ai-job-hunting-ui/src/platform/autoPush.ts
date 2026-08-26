@@ -23,6 +23,9 @@ const COOLDOWN_MAX_MS = 30 * 60 * 1000;
 // 进入时间窗后的首个随机抖动（毫秒）：0 - 10 分钟，避免整点同时投递
 const WINDOW_JITTER_MAX_MS = 10 * 60 * 1000;
 
+// 跨标签互斥锁名（navigator.locks 按 origin 共享，多标签下保证同一时刻只有一个标签在投递）
+const PUSH_LOCK_NAME = "ai-job-push-lock";
+
 function isWorkday(date: Date): boolean {
     const day = date.getDay();
     return day >= 1 && day <= 5; // 周一到周五
@@ -175,32 +178,65 @@ export class AutoPushScheduler {
             return;
         }
 
-        // 计算本批上限：剩余缺口按权重动态分摊到当前及之后槽位（前面没投够的平滑滚到后面）
-        const remaining = target - count;
-        const batchLimit = Math.min(computeSlotQuota(remaining, slotIndex), remaining);
+        // 进入跨标签串行投递：抢锁 → 重读共享计数 → 重算本批上限 → 投递
+        this.tryPushBatch(slotIndex, slotKey, isLast);
+    }
 
-        if (batchLimit <= 0) {
+    /**
+     * 跨标签串行投递一批。
+     * 用 navigator.locks 抢全局互斥锁，多标签下同一时刻只有一个标签在投递；
+     * 抢到锁后重读共享的当日目标/计数，重算真实缺口，避免多标签各自算重、重复投递超标。
+     */
+    private async tryPushBatch(slotIndex: number, slotKey: string, isLast: boolean) {
+        if (this.pushing) {
             return;
         }
-
-        logRecorder.info(`本批投递上限 ${batchLimit}（剩余 ${remaining}）`);
-
-        // 触发一批投递
-        this.lastBatchAt = Date.now();
-        this.cooldownMs = Tools.getRandomNumber(COOLDOWN_MIN_MS, COOLDOWN_MAX_MS);
-        if (!isLast) this.lastPushedSlotKey = slotKey;
         this.pushing = true;
-        this.startBatch(batchLimit)
-            .catch(e => {
-                logRecorder.error("自动投递批次异常", e);
-            })
-            .finally(() => {
-                this.pushing = false;
-                // 投递完成后若仍未达标且自动投递仍开启，刷新页面加载新岗位（每日进度存 GM，刷新后保留）
-                if (UserStore().user.preference?.autoPushE && this.getDailyCount() < target) {
-                    window.setTimeout(() => window.location.reload(), 5000);
+        try {
+            await navigator.locks.request(PUSH_LOCK_NAME, async () => {
+                // 等待锁期间其它标签可能已投递，重读共享状态
+                const userStore = UserStore();
+                const dailyLimit = userStore.user.preference?.dailyPushLimit;
+                const target = dailyLimit && dailyLimit > 0 ? this.ensureDailyTarget(dailyLimit) : 0;
+                const count = this.getDailyCount();
+                const remaining = target - count;
+
+                // 其它标签已投满
+                if (remaining <= 0) {
+                    return;
+                }
+
+                // 等待锁期间用户可能已手动开始投递
+                if (this.isPushing()) {
+                    return;
+                }
+
+                // 计算本批上限：剩余缺口按权重动态分摊到当前及之后槽位（不超过剩余缺口）
+                const batchLimit = Math.min(computeSlotQuota(remaining, slotIndex), remaining);
+                if (batchLimit <= 0) {
+                    return;
+                }
+
+                logRecorder.info(`本批投递上限 ${batchLimit}（剩余 ${remaining}）`);
+
+                // 触发一批投递（锁在回调结束时自动释放）
+                this.lastBatchAt = Date.now();
+                this.cooldownMs = Tools.getRandomNumber(COOLDOWN_MIN_MS, COOLDOWN_MAX_MS);
+                if (!isLast) this.lastPushedSlotKey = slotKey;
+                try {
+                    await this.startBatch(batchLimit);
+                } finally {
+                    // 投递完成后若仍未达标且自动投递仍开启，刷新页面加载新岗位（每日进度存 GM，刷新后保留）
+                    if (UserStore().user.preference?.autoPushE && this.getDailyCount() < target) {
+                        window.setTimeout(() => window.location.reload(), 5000);
+                    }
                 }
             });
+        } catch (e) {
+            logRecorder.error("跨标签投递批次异常", e);
+        } finally {
+            this.pushing = false;
+        }
     }
 
     private ensureDailyTarget(dailyLimit: number): number {
