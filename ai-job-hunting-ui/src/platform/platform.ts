@@ -651,7 +651,7 @@ class BossPlatform extends AbsPlatform {
             // 投递成功说明会话有效，清除失效标志
             TampermonkeyApi.GmSetValue(TampermonkeyApi.SESSION_INVALID, false)
             pushResultCounter.successIncr()
-            this.logRecorder.info(`工作【${jobTitle}】 投递成功`)
+            this.logRecorder.info(`工作【${jobTitle}】 投递成功（本页今日 ${pushResultCounter.pageDailyCount} / 全局今日 ${TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_COUNT, 0)}）`)
 
             try {
                 // 投递后发送自定义图片
@@ -744,6 +744,10 @@ class BossPlatform extends AbsPlatform {
     }
 
     bossIsActive(activeText: string) {
+        // 精确放开「本周活跃」；月 / 年 / 近2周及以上仍排除
+        if (activeText.includes("本周")) {
+            return true;
+        }
         return !(activeText.includes("月") || activeText.includes("年") || activeText.includes("周"));
     }
 
