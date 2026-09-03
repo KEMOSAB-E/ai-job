@@ -5,11 +5,26 @@ import logger from "../logging";
 import platform, {PlatformTypeEnum} from "../platform/platform";
 import {TampermonkeyApi, Tools} from "../platform/utils";
 
+// 本标签页今日投递成功数存储 key（sessionStorage：每标签页独立、同标签跨刷新保留、关标签清除）
+const PAGE_DAILY_DATE_KEY = "pagePushDailyDate"
+const PAGE_DAILY_COUNT_KEY = "pagePushDailyCount"
+
+function loadPageDailyCount(): number {
+    const today = Tools.getCurDay()
+    if (sessionStorage.getItem(PAGE_DAILY_DATE_KEY) !== today) {
+        return 0
+    }
+    const v = Number(sessionStorage.getItem(PAGE_DAILY_COUNT_KEY) ?? '0')
+    return Number.isFinite(v) ? v : 0
+}
+
 export const pushResultCount = defineStore('pushResultCount', () => {
     const notMatchCount = ref(0)
     const successCount = ref(TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_SUCCESS_COUNT, 0))
     const onceSuccessCount = ref(0)
     const failCount = ref(TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_FAIL_COUNT, 0))
+    // 本标签页今日累计投递成功数（跨天清零）
+    const pageDailyCount = ref(loadPageDailyCount())
 
     function notMatchIncr() {
         notMatchCount.value++
@@ -27,6 +42,14 @@ export const pushResultCount = defineStore('pushResultCount', () => {
         }
         const daily = TampermonkeyApi.GmGetValue(TampermonkeyApi.PUSH_DAILY_COUNT, 0)
         TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_DAILY_COUNT, daily + 1)
+
+        // 本标签页今日投递计数：跨天清零后自增
+        if (sessionStorage.getItem(PAGE_DAILY_DATE_KEY) !== today) {
+            sessionStorage.setItem(PAGE_DAILY_DATE_KEY, today)
+            pageDailyCount.value = 0
+        }
+        pageDailyCount.value++
+        sessionStorage.setItem(PAGE_DAILY_COUNT_KEY, String(pageDailyCount.value))
     }
 
     function failIncr() {
@@ -46,7 +69,8 @@ export const pushResultCount = defineStore('pushResultCount', () => {
         failCount,
         failIncr,
         onceSuccessCount,
-        clearOnceSuccessCount
+        clearOnceSuccessCount,
+        pageDailyCount
     }
 })
 

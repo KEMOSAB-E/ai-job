@@ -40,7 +40,7 @@
             pushResultCounter.failCount
         }}&nbsp;&nbsp;&nbsp;
     </el-text>
-    <el-text size="large" class="mx-1" type="info"> 今日投递：{{ dailyCount }}<template v-if="dailyTarget > 0"> / 目标 {{ dailyTarget }}</template>&nbsp;&nbsp;&nbsp;
+    <el-text size="large" class="mx-1" type="info"> 今日投递：{{ dailyCount }}<template v-if="dailyTarget > 0"> / 目标 {{ dailyTarget }}</template>（本页 {{ pushResultCounter.pageDailyCount }}）&nbsp;&nbsp;&nbsp;
     </el-text>
     <el-text size="large" class="mx-1" :type="autoPushEnabled ? 'success' : 'info'"> 自动投递：{{ autoPushEnabled ? '开' : '关' }}&nbsp;&nbsp;&nbsp;
     </el-text>
