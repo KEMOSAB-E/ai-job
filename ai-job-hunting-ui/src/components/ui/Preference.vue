@@ -256,6 +256,20 @@
                 </el-checkbox>
             </div>
 
+            <div style="display: flex;margin-bottom: 10px;">
+                <el-checkbox v-model="userStore.user.preference.autoSwitchTabE" label="" size="large">自动切换标签刷新职位池
+                </el-checkbox>
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <p class="time-interval" style="margin-top: 12px;">轮换标签</p>
+                <el-select v-model="userStore.user.preference.autoSwitchTabNames" multiple
+                           filterable allow-create default-first-option size="small"
+                           style="width: 260px;margin-top: 3px;"
+                           placeholder="选择/输入标签名，留空则自动轮换全部标签">
+                    <el-option label="推荐" value="推荐"/>
+                    <el-option label="前端开发工程师(北京)" value="前端开发工程师(北京)"/>
+                </el-select>
+            </div>
+
             <el-text class="mx-1 top-title" type="warning">交互设置</el-text>
 
             <el-form-item label="预测问题" prop="jobContentExclude" style="margin-top: 10px;">
@@ -595,6 +609,14 @@ const preferenceDefaultValueHandler = () => {
     // 岗位池枯竭自动放宽筛选：默认关闭
     if (!userStore.user.preference.relaxFilterE) {
         userStore.user.preference.relaxFilterE = false;
+    }
+    // 自动切换标签刷新职位池：默认关闭
+    if (!userStore.user.preference.autoSwitchTabE) {
+        userStore.user.preference.autoSwitchTabE = false;
+    }
+    // 参与轮换的标签名：默认空（自动轮换全部可用标签）
+    if (!userStore.user.preference.autoSwitchTabNames) {
+        userStore.user.preference.autoSwitchTabNames = [];
     }
 }
 

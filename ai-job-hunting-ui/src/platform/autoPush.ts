@@ -226,9 +226,9 @@ export class AutoPushScheduler {
                 try {
                     await this.startBatch(batchLimit);
                 } finally {
-                    // 投递完成后若仍未达标且自动投递仍开启，刷新页面加载新岗位（每日进度存 GM，刷新后保留）
+                    // 投递完成后若仍未达标且自动投递仍开启，加载新岗位（每日进度存 GM，刷新后保留）
                     if (UserStore().user.preference?.autoPushE && this.getDailyCount() < target) {
-                        window.setTimeout(() => window.location.reload(), 5000);
+                        window.setTimeout(() => this.refreshJobPool(), 2000);
                     }
                 }
             });
@@ -278,5 +278,93 @@ export class AutoPushScheduler {
         const msg = `今日投递不足：目标 ${target} 实际 ${count}`;
         logRecorder.warn(msg);
         TampermonkeyApi.GmNotification(msg);
+    }
+
+    /**
+     * 当前整页刷新前已切换过的标签数。
+     * 批次投递完成后优先点击下一个标签加载新岗位；所有标签轮换一遍后整页刷新加载全新岗位。
+     */
+    private switchesSinceReload = 0;
+
+    /**
+     * 批次投递结束后刷新职位池，避免岗位池枯竭：
+     * 开启「自动切换标签」且存在可轮换标签时，点击下一个标签；全部标签轮换完后再整页刷新。
+     */
+    private refreshJobPool() {
+        const pref = UserStore().user.preference;
+        const tabNames = this.resolveTabNames(pref);
+        if (pref?.autoSwitchTabE && tabNames.length > 1) {
+            // 本页还有未轮换到的标签：点击下一个标签加载新职位池（切完 N-1 次后回到起始标签）
+            if (this.switchesSinceReload < tabNames.length - 1 && this.switchToNextTab(tabNames)) {
+                this.switchesSinceReload++;
+                logRecorder.info(`已切换标签刷新职位池（${this.switchesSinceReload}/${tabNames.length - 1}），继续自动投递`);
+                return;
+            }
+            // 全部标签已轮换完：整页刷新加载全新岗位，并重置轮换计数
+            this.switchesSinceReload = 0;
+        }
+        logRecorder.info("刷新页面加载新岗位");
+        window.setTimeout(() => window.location.reload(), 5000);
+    }
+
+    /**
+     * 解析参与轮换的标签名列表；未配置时自动收集页面当前可用的标签（推荐 + 求职期望标签）。
+     */
+    private resolveTabNames(pref: any): string[] {
+        let names: string[] = Array.isArray(pref?.autoSwitchTabNames)
+            ? pref.autoSwitchTabNames.filter((n: any) => n && String(n).trim().length > 0)
+            : [];
+        if (names.length === 0) {
+            names = ["推荐"];
+            document.querySelectorAll("a.expect-item").forEach((a: Element) => {
+                const t = a.textContent?.trim();
+                if (t && !names.includes(t)) {
+                    names.push(t);
+                }
+            });
+        }
+        return names;
+    }
+
+    /**
+     * 点击配置列表中当前激活标签的下一个标签；找不到可点击标签时返回 false。
+     */
+    private switchToNextTab(tabNames: string[]): boolean {
+        const active = this.getActiveTabName();
+        const idx = tabNames.indexOf(active);
+        // 当前激活标签不在列表中时从头开始轮换
+        const start = idx === -1 ? -1 : idx;
+        for (let offset = 1; offset <= tabNames.length; offset++) {
+            const name = tabNames[(start + offset) % tabNames.length];
+            if (this.clickTabByName(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private getActiveTabName(): string {
+        if (document.querySelector("a.synthesis.active")) {
+            return "推荐";
+        }
+        const expect = document.querySelector("a.expect-item.active");
+        return expect ? expect.textContent?.trim() || "" : "";
+    }
+
+    private clickTabByName(name: string): boolean {
+        let el: Element | null = null;
+        if (name === "推荐") {
+            el = document.querySelector("a.synthesis");
+        } else if (name) {
+            el = Array.from(document.querySelectorAll("a.expect-item"))
+                .find(a => a.textContent?.trim() === name) || null;
+        }
+        if (!el) {
+            logRecorder.warn(`未找到标签【${name}】，跳过`);
+            return false;
+        }
+        (el as HTMLElement).click();
+        logRecorder.info(`点击标签【${name}】刷新职位池`);
+        return true;
     }
 }

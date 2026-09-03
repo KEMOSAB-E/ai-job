@@ -177,6 +177,14 @@ export type PreferenceConfig = {
      * 岗位池枯竭自动放宽筛选开关
      */
     relaxFilterE: boolean,
+    /**
+     * 自动切换标签刷新职位池开关（批次投递完成后自动点击标签加载新岗位，避免职位池枯竭）
+     */
+    autoSwitchTabE: boolean,
+    /**
+     * 参与轮换的求职期望标签名（如 推荐、前端工程师(北京)），自动投递时按顺序轮流点击
+     */
+    autoSwitchTabNames: string[],
 }
 
 /**
