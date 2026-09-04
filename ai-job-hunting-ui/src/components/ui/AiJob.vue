@@ -330,7 +330,7 @@ const productListLoading = ref<boolean>(false);
 // 创建日志记录器实例
 const logRecorder = new LogRecorder();
 const latestPushRecords = ref<{ level: string; message: string; timestamp: string }[]>([]);
-let recordsUpdateTimer: number | null = null;
+let recordsUpdateTimer: ReturnType<typeof setInterval> | null = null;
 
 // 已经购买产品
 const buyProductList = ref([])
