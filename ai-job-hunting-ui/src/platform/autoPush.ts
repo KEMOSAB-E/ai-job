@@ -26,6 +26,10 @@ const WINDOW_JITTER_MAX_MS = 10 * 60 * 1000;
 // 跨标签互斥锁名（navigator.locks 按 origin 共享，多标签下保证同一时刻只有一个标签在投递）
 const PUSH_LOCK_NAME = "ai-job-push-lock";
 
+// 跨页面共享标签轮换锁名与计数键（每次刷新职位池在锁内读改写，保证多页面交替使用不同标签）
+const TAB_ROTATION_LOCK_NAME = "ai-job-tab-rotation-lock";
+const TAB_ROTATION_COUNT_KEY = "autoPushTabRotationCount";
+
 function isWorkday(date: Date): boolean {
     const day = date.getDay();
     return day >= 1 && day <= 5; // 周一到周五
@@ -281,28 +285,39 @@ export class AutoPushScheduler {
     }
 
     /**
-     * 当前整页刷新前已切换过的标签数。
-     * 批次投递完成后优先点击下一个标签加载新岗位；所有标签轮换一遍后整页刷新加载全新岗位。
-     */
-    private switchesSinceReload = 0;
-
-    /**
      * 批次投递结束后刷新职位池，避免岗位池枯竭：
-     * 开启「自动切换标签」且存在可轮换标签时，点击下一个标签；全部标签轮换完后再整页刷新。
+     * 开启「自动切换标签」且存在可轮换标签时，从跨页面共享的轮换指针取下一个标签点击，
+     * 一轮 N 个标签全部点过之后整页刷新加载全新岗位。
      */
     private refreshJobPool() {
         const pref = UserStore().user.preference;
         const tabNames = this.resolveTabNames(pref);
         if (pref?.autoSwitchTabE && tabNames.length > 1) {
-            // 本页还有未轮换到的标签：点击下一个标签加载新职位池（切完 N-1 次后回到起始标签）
-            if (this.switchesSinceReload < tabNames.length - 1 && this.switchToNextTab(tabNames)) {
-                this.switchesSinceReload++;
-                logRecorder.info(`已切换标签刷新职位池（${this.switchesSinceReload}/${tabNames.length - 1}），继续自动投递`);
-                return;
-            }
-            // 全部标签已轮换完：整页刷新加载全新岗位，并重置轮换计数
-            this.switchesSinceReload = 0;
+            // 跨页面共享轮换：多个页面在轮换锁内串行读改写指针，天然交替使用不同标签
+            navigator.locks.request(TAB_ROTATION_LOCK_NAME, async () => {
+                const rot = TampermonkeyApi.GmGetValue(TAB_ROTATION_COUNT_KEY, 0);
+                const idx = rot % tabNames.length;
+                TampermonkeyApi.GmSetValue(TAB_ROTATION_COUNT_KEY, rot + 1);
+                // 一轮标签已全部点过：整页刷新加载全新职位池
+                if (idx === 0 && rot > 0) {
+                    this.reloadPage();
+                    return;
+                }
+                if (this.clickTabByName(tabNames[idx])) {
+                    logRecorder.info(`已切换标签刷新职位池（${tabNames[idx]}），继续自动投递`);
+                    return;
+                }
+                this.reloadPage();
+            });
+            return;
         }
+        this.reloadPage();
+    }
+
+    /**
+     * 整页刷新加载全新岗位。
+     */
+    private reloadPage() {
         logRecorder.info("刷新页面加载新岗位");
         window.setTimeout(() => window.location.reload(), 5000);
     }
@@ -324,31 +339,6 @@ export class AutoPushScheduler {
             });
         }
         return names;
-    }
-
-    /**
-     * 点击配置列表中当前激活标签的下一个标签；找不到可点击标签时返回 false。
-     */
-    private switchToNextTab(tabNames: string[]): boolean {
-        const active = this.getActiveTabName();
-        const idx = tabNames.indexOf(active);
-        // 当前激活标签不在列表中时从头开始轮换
-        const start = idx === -1 ? -1 : idx;
-        for (let offset = 1; offset <= tabNames.length; offset++) {
-            const name = tabNames[(start + offset) % tabNames.length];
-            if (this.clickTabByName(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private getActiveTabName(): string {
-        if (document.querySelector("a.synthesis.active")) {
-            return "推荐";
-        }
-        const expect = document.querySelector("a.expect-item.active");
-        return expect ? expect.textContent?.trim() || "" : "";
     }
 
     private clickTabByName(name: string): boolean {
