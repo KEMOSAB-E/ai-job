@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI工作猎手-让ai帮您找工作！
 // @namespace    https://github.com/yangfeng20
-// @version      0.0.62-beta
+// @version      0.0.66-beta
 // @author       maple.
 // @description  找工作，用AI工作猎手！让AI帮您找工作！ai坐席：【DeepSeek+ChatGpt】赋能，ai助理作为您的求职者分身24小时 * 7在线找工作，并结合您的简历信息定制化回复。批量投递，自动发送简历，交换联系方式。hr拒绝挽留。高意向邮件通知，让您不错过每一份工作机会。BOSS直聘
 // @license      Apache License 2.0
