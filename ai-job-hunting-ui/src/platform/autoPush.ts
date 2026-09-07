@@ -30,6 +30,9 @@ const PUSH_LOCK_NAME = "ai-job-push-lock";
 const TAB_ROTATION_LOCK_NAME = "ai-job-tab-rotation-lock";
 const TAB_ROTATION_COUNT_KEY = "autoPushTabRotationCount";
 
+// 补投待办消费锁名：父页写入 / 新页读取消费 都在锁内串行，避免多新页重复消费
+export const OPEN_NEXT_PAGE_LOCK_NAME = "ai-job-open-next-page-lock";
+
 function isWorkday(date: Date): boolean {
     const day = date.getDay();
     return day >= 1 && day <= 5; // 周一到周五
@@ -279,9 +282,38 @@ export class AutoPushScheduler {
             return;
         }
         TampermonkeyApi.GmSetValue(TampermonkeyApi.PUSH_DAILY_GAP_REPORTED, today);
+        const gap = target - count;
         const msg = `今日投递不足：目标 ${target} 实际 ${count}`;
         logRecorder.warn(msg);
         TampermonkeyApi.GmNotification(msg);
+        // 通知结束后：若开启补投且配置了目标网页，新开职位页继续补齐今日缺口
+        this.openNextPageToFillGap(gap);
+    }
+
+    /**
+     * 每日投递缺口通知后自动打开新的职位页继续补投。
+     * 仅在开启 autoOpenNextPageE 且配置了有效 nextPageUrl 时触发：
+     * 在共享锁内写入补投待办（{url, gap, ts}），再新开该地址标签；
+     * 目标职位页挂载后会自动读取待办、把单次投递上限设为 gap 并点击开始投递。
+     */
+    private openNextPageToFillGap(gap: number) {
+        const pref = UserStore().user.preference;
+        if (!pref?.autoOpenNextPageE) {
+            return;
+        }
+        const url = pref?.nextPageUrl;
+        if (!url || !String(url).trim() || gap <= 0) {
+            return;
+        }
+        navigator.locks.request(OPEN_NEXT_PAGE_LOCK_NAME, () => {
+            TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, JSON.stringify({
+                url: String(url).trim(),
+                gap,
+                ts: Date.now(),
+            }));
+        });
+        logRecorder.info(`今日缺口 ${gap}，自动打开新网页补投：${url}`);
+        window.open(String(url).trim(), "_blank");
     }
 
     /**

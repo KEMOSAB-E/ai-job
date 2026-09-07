@@ -185,6 +185,14 @@ export type PreferenceConfig = {
      * 参与轮换的求职期望标签名（如 推荐、前端工程师(北京)），自动投递时按顺序轮流点击
      */
     autoSwitchTabNames: string[],
+    /**
+     * 每日投递仍未达标时自动打开新网页补投开关（在缺口通知后触发）
+     */
+    autoOpenNextPageE: boolean,
+    /**
+     * 补投职位页 URL（可手动更换），未达标时新开该地址继续自动投递
+     */
+    nextPageUrl: string,
 }
 
 /**

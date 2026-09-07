@@ -270,6 +270,15 @@
                 </el-select>
             </div>
 
+            <div style="display: flex;margin-bottom: 10px;">
+                <el-checkbox v-model="userStore.user.preference.autoOpenNextPageE" label="" size="large">投递结束后未达标自动打开新网页补投
+                </el-checkbox>
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <el-input v-model="userStore.user.preference.nextPageUrl"
+                          placeholder="未达标时打开该职位页继续投递（可手动更换）"
+                          style="width: 480px;"/>
+            </div>
+
             <el-text class="mx-1 top-title" type="warning">交互设置</el-text>
 
             <el-form-item label="预测问题" prop="jobContentExclude" style="margin-top: 10px;">
@@ -617,6 +626,14 @@ const preferenceDefaultValueHandler = () => {
     // 参与轮换的标签名：默认空（自动轮换全部可用标签）
     if (!userStore.user.preference.autoSwitchTabNames) {
         userStore.user.preference.autoSwitchTabNames = [];
+    }
+    // 未达标自动打开新网页补投：默认关闭
+    if (!userStore.user.preference.autoOpenNextPageE) {
+        userStore.user.preference.autoOpenNextPageE = false;
+    }
+    // 补投职位页 URL：默认前端开发工程师(北京) 搜索页，可手动更换
+    if (!userStore.user.preference.nextPageUrl) {
+        userStore.user.preference.nextPageUrl = "https://www.zhipin.com/web/geek/jobs?city=101010100&jobType=1901&scale=303,304&query=%E5%89%8D%E7%AB%AF%E5%BC%80%E5%8F%91%E5%B7%A5%E7%A8%8B%E5%B8%88";
     }
 }
 

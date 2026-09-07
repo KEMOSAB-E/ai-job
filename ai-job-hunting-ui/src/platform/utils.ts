@@ -142,6 +142,8 @@ export class TampermonkeyApi {
     static PUSH_DAILY_GAP_REPORTED = "pushDailyGapReported";
     // 登录会话是否已失效
     static SESSION_INVALID = "sessionInvalid";
+    // 补投待办（{url, gap, ts}）：自动投递缺口通知后写入，新开的目标职位页读取并自动消费
+    static AUTO_OPEN_NEXT_PAGE = "autoOpenNextPage";
 
     // 公司名包含输入框lab
     static cnInKey = "companyNameInclude"

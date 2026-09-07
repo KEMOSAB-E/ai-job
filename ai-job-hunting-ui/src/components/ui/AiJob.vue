@@ -237,7 +237,7 @@ import {CircleCloseFilled, PriceTag, Promotion, Service, Shop, Upload, Wallet, C
 import {h, inject, ref, Ref, onMounted, onUnmounted, computed} from "vue";
 import {PushStatus} from "../../enums";
 import {AbsPlatform} from "../../platform/platform";
-import {AutoPushScheduler} from "../../platform/autoPush";
+import {AutoPushScheduler, OPEN_NEXT_PAGE_LOCK_NAME} from "../../platform/autoPush";
 import {TampermonkeyApi, Tools} from "../../platform/utils";
 import {ElMessage, fetchWithGM_request, isProdEnv, loginInterceptor, silentlyLogin} from "../../utils/tools";
 import logger from '../../logging'
@@ -741,12 +741,64 @@ if (!loginStore.login && !loginStore.loginFailStatus) {
 let autoPushScheduler: AutoPushScheduler | null = null;
 let dailyStatusTimer: number | null = null;
 
+// 补投待办有效期（毫秒）：超出则视为过期不消费，避免陈旧待办误触
+const NEXT_PAGE_TASK_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * 消费父页写入的补投待办（仅在自动投递【应用】的职位页触发）。
+ * 父页在每日缺口通知后打开此职位页并写入 {url, gap, ts}；
+ * 进程在此读取待办 → 校验新鲜度与 URL 匹配 → 把单次投递上限设为 gap → 自动开始投递。
+ */
+const autoConsumeNextPushTask = async () => {
+    if (!window.location.href.includes("/web/geek/jobs")) {
+        return;
+    }
+    try {
+        await navigator.locks.request(OPEN_NEXT_PAGE_LOCK_NAME, async () => {
+            const raw = TampermonkeyApi.GmGetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, "");
+            if (!raw) {
+                return;
+            }
+            let task: { url: string; gap: number; ts: number } | null = null;
+            try {
+                task = JSON.parse(raw);
+            } catch (e) {
+                return;
+            }
+            if (!task || !task.url || !task.gap || task.gap <= 0) {
+                return;
+            }
+            // 过期待办：清理后忽略
+            if (Date.now() - task.ts > NEXT_PAGE_TASK_TTL_MS) {
+                TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, "");
+                return;
+            }
+            // URL 不匹配当前页：保留待办（可能新开的多标签之一），当前页不消费
+            if (encodeURIComponent(window.location.href) !== encodeURIComponent(task.url) &&
+                window.location.href !== task.url) {
+                return;
+            }
+            // 消费：清空待办，设置单次上限并自动投一批
+            TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, "");
+            logRecorder.info(`检测到补投待办：今日缺口 ${task.gap}，自动开始投递补齐`);
+            selfDefPushCountLimit.value = task.gap;
+            platform.selfDefPushCountLimit = task.gap;
+            await new Promise<void>(res => setTimeout(res, 1500)); // 等待页面职位渲染完成
+            startPush();
+        });
+    } catch (e) {
+        logRecorder.error("消费补投待办异常", e);
+    }
+};
+
 onMounted(() => {
     autoPushScheduler = new AutoPushScheduler(
         (gap) => runPushBatch(gap),
         () => pushStatus.value === PushStatus.PUSHING
     );
     autoPushScheduler.start();
+    // 新开的目标职位页：自动消费补投待办，等效点击「开始投递」
+    autoConsumeNextPushTask();
     refreshDailyStatus();
     dailyStatusTimer = window.setInterval(refreshDailyStatus, 30000);
 });
