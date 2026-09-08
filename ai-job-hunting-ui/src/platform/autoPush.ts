@@ -293,10 +293,11 @@ export class AutoPushScheduler {
     /**
      * 每日投递缺口通知后自动打开新的职位页继续补投。
      * 仅在开启 autoOpenNextPageE 且配置了有效 nextPageUrl 时触发：
-     * 在共享锁内写入补投待办（{url, gap, ts}），再新开该地址标签；
+     * 先在共享锁内写入补投待办（{url, gap, ts}），待办写完成后再用 GM_openInTab 新开目标地址标签
+     * （GM_openInTab 不受浏览器弹窗拦截限制，且后台打开不打扰用户）；
      * 目标职位页挂载后会自动读取待办、把单次投递上限设为 gap 并点击开始投递。
      */
-    private openNextPageToFillGap(gap: number) {
+    private async openNextPageToFillGap(gap: number) {
         const pref = UserStore().user.preference;
         if (!pref?.autoOpenNextPageE) {
             return;
@@ -305,15 +306,24 @@ export class AutoPushScheduler {
         if (!url || !String(url).trim() || gap <= 0) {
             return;
         }
-        navigator.locks.request(OPEN_NEXT_PAGE_LOCK_NAME, () => {
-            TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, JSON.stringify({
-                url: String(url).trim(),
-                gap,
-                ts: Date.now(),
-            }));
-        });
-        logRecorder.info(`今日缺口 ${gap}，自动打开新网页补投：${url}`);
-        window.open(String(url).trim(), "_blank");
+        try {
+            // 先写完待办再开页，避免新页面先挂载读空待办导致补投失效
+            await navigator.locks.request(OPEN_NEXT_PAGE_LOCK_NAME, () => {
+                TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, JSON.stringify({
+                    url: String(url).trim(),
+                    gap,
+                    ts: Date.now(),
+                }));
+            });
+            logRecorder.info(`今日缺口 ${gap}，自动打开新网页补投：${url}`);
+            TampermonkeyApi.GMOpenInTab(String(url).trim(), {
+                active: false,  // 后台打开，不抢占当前标签
+                insert: true,   // 新标签插入到当前标签右侧
+                setParent: true // 新标签关闭后自动回到父标签
+            });
+        } catch (e) {
+            logRecorder.error("打开新网页补投异常", e);
+        }
     }
 
     /**

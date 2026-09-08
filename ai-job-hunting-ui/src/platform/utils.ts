@@ -1,4 +1,4 @@
-import {GM_getValue, GM_setValue, GM_notification, GM_addValueChangeListener, GM_xmlhttpRequest, unsafeWindow} from "$";
+import {GM_getValue, GM_setValue, GM_notification, GM_addValueChangeListener, GM_xmlhttpRequest, GM_openInTab, unsafeWindow} from "$";
 
 export class Tools {
 
@@ -176,6 +176,10 @@ export class TampermonkeyApi {
 
     static GMXmlHttpRequest(options: any) {
         return GM_xmlhttpRequest(options)
+    }
+
+    static GMOpenInTab(url: string, options?: { active?: boolean; insert?: boolean; setParent?: boolean }) {
+        return GM_openInTab(url, options);
     }
 
     static GmAddValueChangeListener(key: string, func: any) {
