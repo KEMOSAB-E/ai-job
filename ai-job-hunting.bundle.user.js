@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI工作猎手-让ai帮您找工作！
 // @namespace    https://github.com/yangfeng20
-// @version      0.0.67-beta
+// @version      0.0.69-beta
 // @author       maple.
 // @description  找工作，用AI工作猎手！让AI帮您找工作！ai坐席：【DeepSeek+ChatGpt】赋能，ai助理作为您的求职者分身24小时 * 7在线找工作，并结合您的简历信息定制化回复。批量投递，自动发送简历，交换联系方式。hr拒绝挽留。高意向邮件通知，让您不错过每一份工作机会。BOSS直聘
 // @license      Apache License 2.0
@@ -13,6 +13,7 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_getValue
 // @grant        GM_notification
+// @grant        GM_openInTab
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -34,7 +35,7 @@
     return value;
   };
   var require_main_001 = __commonJS({
-    "main-BE21SEda.js"(exports, module) {
+    "main-BkeucF9x.js"(exports, module) {
       /**
       * @vue/shared v3.4.14
       * (c) 2018-present Yuxi (Evan) You and Vue contributors
@@ -14616,6 +14617,7 @@
       var _GM_addValueChangeListener = /* @__PURE__ */ (() => typeof GM_addValueChangeListener != "undefined" ? GM_addValueChangeListener : void 0)();
       var _GM_getValue = /* @__PURE__ */ (() => typeof GM_getValue != "undefined" ? GM_getValue : void 0)();
       var _GM_notification = /* @__PURE__ */ (() => typeof GM_notification != "undefined" ? GM_notification : void 0)();
+      var _GM_openInTab = /* @__PURE__ */ (() => typeof GM_openInTab != "undefined" ? GM_openInTab : void 0)();
       var _GM_setValue = /* @__PURE__ */ (() => typeof GM_setValue != "undefined" ? GM_setValue : void 0)();
       var _GM_xmlhttpRequest = /* @__PURE__ */ (() => typeof GM_xmlhttpRequest != "undefined" ? GM_xmlhttpRequest : void 0)();
       var _unsafeWindow = /* @__PURE__ */ (() => typeof unsafeWindow != "undefined" ? unsafeWindow : void 0)();
@@ -14720,6 +14722,9 @@
         }
         static GMXmlHttpRequest(options) {
           return _GM_xmlhttpRequest(options);
+        }
+        static GMOpenInTab(url, options) {
+          return _GM_openInTab(url, options);
         }
         static GmAddValueChangeListener(key, func) {
           return _GM_addValueChangeListener(_TampermonkeyApi.CUR_CK + key, func);
@@ -76957,10 +76962,11 @@
         /**
          * 每日投递缺口通知后自动打开新的职位页继续补投。
          * 仅在开启 autoOpenNextPageE 且配置了有效 nextPageUrl 时触发：
-         * 在共享锁内写入补投待办（{url, gap, ts}），再新开该地址标签；
+         * 先在共享锁内写入补投待办（{url, gap, ts}），待办写完成后再用 GM_openInTab 新开目标地址标签
+         * （GM_openInTab 不受浏览器弹窗拦截限制，且后台打开不打扰用户）；
          * 目标职位页挂载后会自动读取待办、把单次投递上限设为 gap 并点击开始投递。
          */
-        openNextPageToFillGap(gap) {
+        async openNextPageToFillGap(gap) {
           const pref = UserStore().user.preference;
           if (!(pref == null ? void 0 : pref.autoOpenNextPageE)) {
             return;
@@ -76969,15 +76975,26 @@
           if (!url || !String(url).trim() || gap <= 0) {
             return;
           }
-          navigator.locks.request(OPEN_NEXT_PAGE_LOCK_NAME, () => {
-            TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, JSON.stringify({
-              url: String(url).trim(),
-              gap,
-              ts: Date.now()
-            }));
-          });
-          logRecorder$1.info(`今日缺口 ${gap}，自动打开新网页补投：${url}`);
-          window.open(String(url).trim(), "_blank");
+          try {
+            await navigator.locks.request(OPEN_NEXT_PAGE_LOCK_NAME, () => {
+              TampermonkeyApi.GmSetValue(TampermonkeyApi.AUTO_OPEN_NEXT_PAGE, JSON.stringify({
+                url: String(url).trim(),
+                gap,
+                ts: Date.now()
+              }));
+            });
+            logRecorder$1.info(`今日缺口 ${gap}，自动打开新网页补投：${url}`);
+            TampermonkeyApi.GMOpenInTab(String(url).trim(), {
+              active: false,
+              // 后台打开，不抢占当前标签
+              insert: true,
+              // 新标签插入到当前标签右侧
+              setParent: true
+              // 新标签关闭后自动回到父标签
+            });
+          } catch (e) {
+            logRecorder$1.error("打开新网页补投异常", e);
+          }
         }
         /**
          * 批次投递结束后刷新职位池，避免岗位池枯竭：
